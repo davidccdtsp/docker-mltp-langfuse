@@ -1,0 +1,305 @@
+{
+  "uid": "langfuse-poc",
+  "title": "Langfuse — Observabilidad PoC",
+  "description": "Estado de servicios Langfuse, métricas del generador de trazas y consultas LLM en ClickHouse",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["trace-generator", "langfuse"],
+  "refresh": "30s",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Estado de servicios Langfuse",
+      "description": "1 = UP, 0 = DOWN. Probe HTTP cada 15s via Alloy blackbox exporter.",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "probe_success{job=\"blackbox_langfuse\"}",
+          "legendFormat": "{{instance}}",
+          "refId": "A",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Trace Generator API — Requests/s por handler",
+      "description": "Métricas Prometheus expuestas en /metrics por prometheus-fastapi-instrumentator.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "sum(rate(http_requests_total{job=\"trace-generator\"}[1m])) by (handler, status)",
+          "legendFormat": "{{handler}} [{{status}}]",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Trace Generator API — Latencia p95 (ms)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "ms"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"trace-generator\"}[1m])) by (le, handler)) * 1000",
+          "legendFormat": "p95 {{handler}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Trazas LLM generadas — conteo por intervalo (ClickHouse)",
+      "description": "Consulta directa a ClickHouse sobre la tabla langfuse.traces.",
+      "gridPos": {
+        "h": 8,
+        "w": 14,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-langfuse"
+      },
+      "options": {
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-langfuse"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT toStartOfInterval(timestamp, toIntervalMinute(5)) AS time, count() AS trazas FROM traces WHERE $__timeFilter(timestamp) GROUP BY time ORDER BY time",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Top modelos LLM (últimas 24h)",
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 14,
+        "y": 12
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-langfuse"
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "llamadas",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-langfuse"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT provided_model_name AS model, count() AS llamadas FROM observations WHERE type = 'GENERATION' AND created_at >= now() - INTERVAL 24 HOUR AND provided_model_name != '' AND isNotNull(provided_model_name) GROUP BY model ORDER BY llamadas DESC LIMIT 10",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Top tenants (últimas 24h)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-langfuse"
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "trazas",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-langfuse"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT metadata['tenant_id'] AS tenant, count() AS trazas FROM traces WHERE created_at >= now() - INTERVAL 24 HOUR AND metadata['tenant_id'] != '' GROUP BY tenant ORDER BY trazas DESC LIMIT 10",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "logs",
+      "title": "Logs — Trace Generator",
+      "description": "Logs estructurados enviados desde trace-generator → Alloy → Loki. Usar POST /logs para generar entradas.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showTime": true,
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{job=\"trace-generator\"}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
